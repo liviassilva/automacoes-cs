@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard de Automações — CS</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  /* ── CONFIG: substitua pelas suas credenciais do Supabase ── */
+  /* veja o <script> no final do arquivo                        */
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #ffffff;
+    --bg2: #f5f5f4;
+    --bg3: #eeece9;
+    --text: #1a1a18;
+    --text2: #6b6b67;
+    --text3: #a8a8a3;
+    --border: rgba(0,0,0,0.1);
+    --border2: rgba(0,0,0,0.18);
+    --radius: 8px;
+    --radius-lg: 12px;
+    --font: 'Inter', system-ui, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1a;
+      --bg2: #252523;
+      --bg3: #2e2e2b;
+      --text: #f0ede8;
+      --text2: #9e9e99;
+      --text3: #6b6b67;
+      --border: rgba(255,255,255,0.1);
+      --border2: rgba(255,255,255,0.18);
+    }
+  }
+
+  body { font-family: var(--font); background: var(--bg3); color: var(--text); min-height: 100vh; }
+
+  /* ── Layout ── */
+  .shell { max-width: 1280px; margin: 0 auto; padding: 24px 20px; display: flex; flex-direction: column; gap: 16px; }
+
+  /* ── Top bar ── */
+  .top-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  .top-bar h1 { font-size: 20px; font-weight: 600; color: var(--text); }
+  .top-bar-sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
+  .top-bar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+  /* ── Buttons ── */
+  .btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px 14px; border-radius: var(--radius); font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: opacity .15s, background .15s; }
+  .btn-primary { background: var(--text); color: var(--bg); }
+  .btn-primary:hover { opacity: .85; }
+  .btn-secondary { background: transparent; border: 0.5px solid var(--border2); color: var(--text2); }
+  .btn-secondary:hover { background: var(--bg2); }
+  .btn-danger { background: transparent; border: 0.5px solid var(--border2); color: #a32d2d; font-size: 12px; padding: 4px 9px; }
+  .btn-danger:hover { background: #fcebeb; }
+  .btn-sm { font-size: 11px; padding: 4px 10px; }
+
+  /* ── Alerts ── */
+  .alert-wrap { display: flex; flex-direction: column; gap: 6px; }
+  .alert-banner { padding: 9px 13px; border-radius: var(--radius); font-size: 12px; display: flex; align-items: center; gap: 7px; }
+  .alert-banner.error { background: #fcebeb; border: 0.5px solid #f09595; color: #a32d2d; }
+  .alert-banner.warn  { background: #faeeda; border: 0.5px solid #fac775; color: #854f0b; }
+
+  /* ── Metrics ── */
+  .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  @media (max-width: 700px) { .metrics { grid-template-columns: repeat(2, 1fr); } }
+  .metric { background: var(--bg2); border-radius: var(--radius); padding: 12px 14px; }
+  .metric-label { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--text2); margin-bottom: 5px; }
+  .metric-value { font-size: 22px; font-weight: 600; color: var(--text); }
+  .metric-value.red { color: #a32d2d; }
+  .metric-sub { font-size: 11px; color: var(--text3); margin-top: 3px; }
+
+  /* ── Toolbar ── */
+  .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .view-toggle { display: flex; border: 0.5px solid var(--border2); border-radius: var(--radius); overflow: hidden; }
+  .vt-btn { background: none; border: none; padding: 6px 13px; font-size: 12px; color: var(--text2); cursor: pointer; }
+  .vt-btn.active { background: var(--text); color: var(--bg); }
+  .search-wrap { position: relative; }
+  .search-icon { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text3); font-size: 14px; pointer-events: none; }
+  .search-wrap input { padding: 6px 10px 6px 30px; font-size: 12px; border: 0.5px solid var(--border); border-radius: var(--radius); background: var(--bg2); color: var(--text); width: 180px; }
+  .filter-select { font-size: 12px; padding: 6px 9px; border: 0.5px solid var(--border); border-radius: var(--radius); background: var(--bg2); color: var(--text); cursor: pointer; }
+  .status-filters { display: flex; gap: 5px; flex-wrap: wrap; }
+  .fb { background: none; border: 0.5px solid var(--border); padding: 4px 11px; border-radius: 20px; font-size: 11px; color: var(--text2); cursor: pointer; }
+  .fb.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+  /* ── Content area ── */
+  .content-area { display: flex; gap: 12px; }
+  .list-view { flex: 1; min-width: 0; background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; display: flex; flex-direction: column; }
+  .list-header { display: grid; grid-template-columns: 1fr 110px 120px 70px 70px 90px; gap: 6px; padding: 9px 16px; background: var(--bg2); border-bottom: 0.5px solid var(--border); }
+  .lh { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text2); }
+  .list-items { overflow-y: auto; max-height: 420px; }
+  .list-item { display: grid; grid-template-columns: 1fr 110px 120px 70px 70px 90px; gap: 6px; padding: 10px 16px; border-bottom: 0.5px solid var(--border); cursor: pointer; align-items: center; }
+  .list-item:hover { background: var(--bg2); }
+  .list-item.active { background: var(--bg2); border-left: 2px solid var(--text); }
+  .li-name { font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .li-sub { font-size: 11px; color: var(--text2); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .empty-row { padding: 24px; text-align: center; font-size: 13px; color: var(--text2); }
+
+  /* ── Badges ── */
+  .badge { font-size: 10px; font-weight: 600; padding: 2px 9px; border-radius: 20px; display: inline-block; white-space: nowrap; }
+  .b-concluido     { background: #eaf3de; color: #3b6d11; }
+  .b-desenvolvimento { background: #e6f1fb; color: #185fa5; }
+  .b-planejamento  { background: #faeeda; color: #854f0b; }
+  .b-pausado       { background: #f1efe8; color: #5f5e5a; }
+  .b-cancelado     { background: #fcebeb; color: #a32d2d; }
+  .b-backlog       { background: #fbeaf0; color: #993556; }
+  .pri-1 { background: #fcebeb; color: #a32d2d; }
+  .pri-2 { background: #faeeda; color: #854f0b; }
+  .pri-3 { background: #eaf3de; color: #3b6d11; }
+
+  /* ── Progress bar ── */
+  .pbar-wrap { width: 56px; height: 4px; background: var(--bg3); border-radius: 4px; overflow: hidden; }
+  .pbar { height: 100%; border-radius: 4px; background: var(--text); }
+
+  /* ── Deadline colors ── */
+  .dl-ok   { font-size: 11px; color: #3b6d11; font-weight: 500; }
+  .dl-warn { font-size: 11px; color: #854f0b; font-weight: 500; }
+  .dl-over { font-size: 11px; color: #a32d2d; font-weight: 500; }
+  .dl-none { font-size: 11px; color: var(--text3); }
+
+  /* ── Side panel ── */
+  .side-panel { width: 280px; flex-shrink: 0; background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; display: flex; flex-direction: column; }
+  .sp-head { padding: 11px 14px; border-bottom: 0.5px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .sp-head h2 { font-size: 12px; font-weight: 600; color: var(--text); }
+  .sp-btns { display: flex; gap: 5px; }
+  .sp-tabs { display: flex; border-bottom: 0.5px solid var(--border); }
+  .sp-tab { flex: 1; padding: 7px; font-size: 11px; text-align: center; cursor: pointer; color: var(--text2); background: none; border: none; border-bottom: 2px solid transparent; }
+  .sp-tab.active { color: var(--text); border-bottom-color: var(--text); font-weight: 600; }
+  .sp-body { padding: 13px; display: flex; flex-direction: column; gap: 11px; overflow-y: auto; max-height: 420px; }
+  .sp-empty { display: flex; align-items: center; justify-content: center; min-height: 160px; font-size: 13px; color: var(--text3); text-align: center; padding: 20px; }
+  .sp-title { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.4; }
+  .sp-section h3 { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--text2); margin-bottom: 6px; }
+  .sp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .sp-field { background: var(--bg2); border-radius: var(--radius); padding: 7px 9px; }
+  .sp-field.full { grid-column: 1 / -1; }
+  .sf-label { font-size: 9px; text-transform: uppercase; letter-spacing: .04em; color: var(--text3); margin-bottom: 2px; }
+  .sf-val { font-size: 12px; font-weight: 500; color: var(--text); }
+  .sf-val.warn { color: #854f0b; }
+  .sf-val.over { color: #a32d2d; }
+  .prog-full { display: flex; align-items: center; gap: 8px; }
+  .prog-full-bar { flex: 1; height: 5px; background: var(--bg2); border-radius: 4px; overflow: hidden; }
+  .prog-full-inner { height: 100%; border-radius: 4px; background: var(--text); }
+  .sp-desc { font-size: 12px; color: var(--text2); line-height: 1.6; background: var(--bg2); border-radius: var(--radius); padding: 9px; max-height: 90px; overflow-y: auto; }
+
+  /* ── History ── */
+  .hist-list { display: flex; flex-direction: column; }
+  .hist-item { padding: 9px 0; border-bottom: 0.5px solid var(--border); display: flex; gap: 9px; }
+  .hist-item:last-child { border-bottom: none; }
+  .hist-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+  .hist-dot.create { background: #185fa5; }
+  .hist-dot.edit   { background: #854f0b; }
+  .hist-dot.status { background: #3b6d11; }
+  .hist-body { flex: 1; min-width: 0; }
+  .hist-action { font-size: 11px; color: var(--text); line-height: 1.4; }
+  .hist-meta { font-size: 10px; color: var(--text3); margin-top: 2px; }
+
+  /* ── Kanban ── */
+  .kanban-view { flex: 1; display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+  .kb-col { min-width: 180px; flex: 1; display: flex; flex-direction: column; gap: 8px; max-height: 460px; }
+  .kb-col-head { padding: 8px 10px; border-radius: var(--radius); display: flex; align-items: center; justify-content: space-between; background: var(--bg2); border: 0.5px solid var(--border); flex-shrink: 0; }
+  .kb-col-title { font-size: 11px; font-weight: 600; color: var(--text); }
+  .kb-count { font-size: 10px; color: var(--text2); background: var(--bg); border: 0.5px solid var(--border); border-radius: 20px; padding: 1px 7px; }
+  .kb-cards { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1; }
+  .kb-card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 10px; cursor: pointer; }
+  .kb-card:hover { border-color: var(--border2); }
+  .kb-card.active { border-color: var(--text); }
+  .kb-card.overdue  { border-left: 2px solid #a32d2d; }
+  .kb-card.due-soon { border-left: 2px solid #854f0b; }
+  .kb-card-name { font-size: 11px; font-weight: 500; color: var(--text); line-height: 1.4; margin-bottom: 6px; }
+  .kb-meta { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+  .kb-area { font-size: 10px; color: var(--text2); }
+
+  /* ── Modal ── */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+  .modal { background: var(--bg); border-radius: var(--radius-lg); border: 0.5px solid var(--border); width: 100%; max-width: 520px; max-height: 92vh; overflow-y: auto; }
+  .modal-head { padding: 14px 18px; border-bottom: 0.5px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .modal-head h2 { font-size: 15px; font-weight: 600; color: var(--text); }
+  .btn-close { background: none; border: none; font-size: 20px; color: var(--text2); cursor: pointer; line-height: 1; }
+  .modal-body { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+  .fg { display: flex; flex-direction: column; gap: 5px; }
+  .fg label { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--text2); font-weight: 600; }
+  .fg input, .fg select, .fg textarea { font-size: 13px; padding: 8px 11px; border-radius: var(--radius); border: 0.5px solid var(--border2); background: var(--bg); color: var(--text); width: 100%; }
+  .fg textarea { resize: vertical; min-height: 66px; }
+  .modal-foot { padding: 12px 18px; border-top: 0.5px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+
+  /* ── Confirm ── */
+  .confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 110; padding: 16px; }
+  .confirm-box { background: var(--bg); border-radius: var(--radius-lg); border: 0.5px solid var(--border); padding: 22px; max-width: 340px; width: 100%; }
+  .confirm-box p { font-size: 13px; color: var(--text); margin-bottom: 18px; line-height: 1.6; }
+  .confirm-btns { display: flex; justify-content: flex-end; gap: 8px; }
+
+  /* ── Toast ── */
+  .toast { position: fixed; bottom: 22px; right: 22px; background: var(--text); color: var(--bg); padding: 10px 18px; border-radius: var(--radius); font-size: 13px; z-index: 200; opacity: 0; transition: opacity .25s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+
+  /* ── Loading ── */
+  .loading { display: flex; align-items: center; justify-content: center; padding: 40px; gap: 10px; font-size: 13px; color: var(--text2); }
+  .spinner { width: 18px; height: 18px; border: 2px solid var(--border2); border-top-color: var(--text); border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <div class="top-bar">
+    <div>
+      <h1>Dashboard de Automações — CS</h1>
+      <div class="top-bar-sub" id="subtitle">Conectando...</div>
+    </div>
+    <div class="top-bar-right">
+      <button class="btn btn-secondary" onclick="exportCSV()">↓ Exportar CSV</button>
+      <button class="btn btn-primary" onclick="openModal()">+ Nova automação</button>
+    </div>
+  </div>
+
+  <div class="alert-wrap" id="alert-banners"></div>
+  <div class="metrics" id="metrics"></div>
+
+  <div class="toolbar">
+    <div class="view-toggle">
+      <button class="vt-btn active" id="btn-lista"   onclick="setView('lista')">Lista</button>
+      <button class="vt-btn"        id="btn-kanban"  onclick="setView('kanban')">Kanban</button>
+    </div>
+    <div class="search-wrap">
+      <span class="search-icon">⌕</span>
+      <input type="text" id="search" placeholder="Buscar..." oninput="render()">
+    </div>
+    <select class="filter-select" id="filter-cat"  onchange="render()"><option value="">Todas as categorias</option></select>
+    <select class="filter-select" id="filter-resp" onchange="render()"><option value="">Todos os responsáveis</option></select>
+    <select class="filter-select" id="sort-by" onchange="render()">
+      <option value="default">Padrão</option>
+      <option value="pri-asc">Prioridade ↑</option>
+      <option value="deadline-asc">Prazo ↑</option>
+      <option value="prog-desc">Progresso ↓</option>
+      <option value="prog-asc">Progresso ↑</option>
+      <option value="name-asc">Nome A→Z</option>
+    </select>
+    <div class="status-filters" id="filters"></div>
+  </div>
+
+  <div class="content-area" id="content-area">
+    <div class="loading"><div class="spinner"></div>Carregando dados...</div>
+  </div>
+</div>
+
+<!-- Modal edição -->
+<div class="overlay" id="modal" style="display:none">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="modal-title">Nova automação</h2>
+      <button class="btn-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg"><label>Nome da automação</label><input type="text" id="f-name" placeholder="Descreva a automação..."></div>
+      <div class="form-row">
+        <div class="fg"><label>Área</label><input type="text" id="f-area" placeholder="Ex: CS"></div>
+        <div class="fg"><label>Categoria</label><input type="text" id="f-cat" placeholder="Ex: E-mail, Agenda..."></div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>Responsável</label><input type="text" id="f-resp" placeholder="Ex: Maria Eduarda, Keila..."></div>
+        <div class="fg"><label>Status</label>
+          <select id="f-status">
+            <option value="Backlog">Backlog</option>
+            <option value="Planejamento">Planejamento</option>
+            <option value="Em desenvolvimento">Em desenvolvimento</option>
+            <option value="Pausado">Pausado</option>
+            <option value="Concluído">Concluído</option>
+            <option value="Cancelado">Cancelado</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>Prioridade</label>
+          <select id="f-pri">
+            <option value="1">1 — Alta</option>
+            <option value="2">2 — Média</option>
+            <option value="3" selected>3 — Baixa</option>
+          </select>
+        </div>
+        <div class="fg"><label>Dificuldade</label>
+          <select id="f-dif">
+            <option value="1">1 — Fácil</option>
+            <option value="2">2 — Média</option>
+            <option value="3" selected>3 — Difícil</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>Data de início</label><input type="date" id="f-start"></div>
+        <div class="fg"><label>Prazo previsto</label><input type="date" id="f-end"></div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>Progresso (%)</label><input type="number" id="f-prog" min="0" max="100" value="0"></div>
+        <div class="fg"><label>LLM / Ferramenta</label><input type="text" id="f-tool" placeholder="Ex: Gemini, Script..."></div>
+      </div>
+      <div class="fg"><label>KPI monitorado</label><input type="text" id="f-kpi" placeholder="Ex: Tempo de resposta, SLA..."></div>
+      <div class="fg"><label>Observação</label><textarea id="f-obs" placeholder="Detalhes, contexto, notas importantes..."></textarea></div>
+      <div class="fg"><label>Seu nome (para o histórico)</label><input type="text" id="f-author" placeholder="Ex: Maria Eduarda"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary"   onclick="saveProject()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm delete -->
+<div class="confirm-overlay" id="confirm-overlay" style="display:none">
+  <div class="confirm-box">
+    <p id="confirm-msg"></p>
+    <div class="confirm-btns">
+      <button class="btn btn-secondary" onclick="closeConfirm()">Cancelar</button>
+      <button class="btn btn-primary" style="background:#a32d2d" id="confirm-ok">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════
+//  ⚙️  CONFIGURAÇÃO — substitua pelos valores do seu projeto Supabase
+//  Acesse: https://supabase.com → seu projeto → Settings → API
+// ══════════════════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://SEU_PROJECT_ID.supabase.co';
+const SUPABASE_ANON_KEY = 'SUA_ANON_KEY_AQUI';
+// ══════════════════════════════════════════════════════════════════
+
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const STATUS_MAP = {
+  'Concluído':'b-concluido','Em desenvolvimento':'b-desenvolvimento',
+  'Planejamento':'b-planejamento','Pausado':'b-pausado',
+  'Cancelado':'b-cancelado','Backlog':'b-backlog'
+};
+const PRI_MAP  = {'1':'pri-1','2':'pri-2','3':'pri-3'};
+const PRI_LBL  = {'1':'Alta','2':'Média','3':'Baixa'};
+const DIF_LBL  = {'1':'Fácil','2':'Média','3':'Difícil'};
+const KB_COLS  = ['Backlog','Planejamento','Em desenvolvimento','Pausado','Concluído','Cancelado'];
+
+let projects = [], editId = null, selectedId = null;
+let activeFilter = 'Todos', currentView = 'lista', activeTab = 'detalhes', deleteTargetId = null;
+
+// ── Helpers ──────────────────────────────────────────────────────
+const today = () => { const d = new Date(); d.setHours(0,0,0,0); return d; };
+function daysDiff(s) {
+  if (!s) return null;
+  const d = new Date(s); d.setHours(0,0,0,0);
+  return Math.round((d - today()) / 86400000);
+}
+function fmtDate(s) {
+  if (!s) return '—';
+  const [y,m,d] = s.split('-'); return `${d}/${m}/${y}`;
+}
+function fmtTs(ts) {
+  const d = new Date(ts);
+  return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+}
+function deadlineInfo(p) {
+  if (p.status === 'Concluído' || p.status === 'Cancelado') return {cls:'dl-none',text:'—'};
+  if (!p.end_date) return {cls:'dl-none',text:'—'};
+  const d = daysDiff(p.end_date);
+  if (d < 0)  return {cls:'dl-over', text:`${Math.abs(d)}d atrasado`};
+  if (d === 0) return {cls:'dl-warn', text:'Vence hoje'};
+  if (d <= 7)  return {cls:'dl-warn', text:`${d}d restantes`};
+  return {cls:'dl-ok', text: fmtDate(p.end_date)};
+}
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2400);
+}
+function getUnique(field) {
+  return [...new Set(projects.map(p => p[field]).filter(Boolean))].sort();
+}
+
+// ── Supabase: load ────────────────────────────────────────────────
+async function loadProjects() {
+  const { data, error } = await db.from('automacoes').select('*').order('id');
+  if (error) {
+    document.getElementById('content-area').innerHTML =
+      `<div class="loading" style="color:#a32d2d">Erro ao conectar ao banco de dados. Verifique as credenciais no arquivo HTML.</div>`;
+    return;
+  }
+  projects = data || [];
+  renderAll();
+
+  // Realtime: atualiza sem recarregar
+  db.channel('automacoes').on('postgres_changes',{event:'*',schema:'public',table:'automacoes'}, async () => {
+    const { data: fresh } = await db.from('automacoes').select('*').order('id');
+    projects = fresh || [];
+    renderAll();
+  }).subscribe();
+}
+
+// ── Supabase: save / delete ───────────────────────────────────────
+async function saveProject() {
+  const name = document.getElementById('f-name').value.trim();
+  if (!name) { alert('Informe o nome da automação.'); return; }
+  const author = document.getElementById('f-author').value.trim() || 'Desconhecido';
+  const now = new Date().toISOString();
+
+  const payload = {
+    name,
+    area:      document.getElementById('f-area').value.trim() || 'CS',
+    category:  document.getElementById('f-cat').value.trim()  || 'Geral',
+    responsible: document.getElementById('f-resp').value.trim(),
+    status:    document.getElementById('f-status').value,
+    priority:  parseInt(document.getElementById('f-pri').value)  || 3,
+    difficulty:parseInt(document.getElementById('f-dif').value)  || 3,
+    progress:  Math.min(100, Math.max(0, parseInt(document.getElementById('f-prog').value) || 0)),
+    tool:      document.getElementById('f-tool').value.trim(),
+    kpi:       document.getElementById('f-kpi').value.trim(),
+    notes:     document.getElementById('f-obs').value.trim(),
+    start_date:document.getElementById('f-start').value || null,
+    end_date:  document.getElementById('f-end').value   || null,
+  };
+
+  if (editId) {
+    const old = projects.find(x => x.id === editId);
+    const changes = diffProject(old, payload);
+    const newHist = [...(old.history || [])];
+    if (changes.length) {
+      const isStatus = changes.some(c => c.startsWith('Status:'));
+      newHist.push({ type: isStatus ? 'status' : 'edit', author, note: changes.join(' | '), ts: now });
+    }
+    payload.history = newHist;
+    const { error } = await db.from('automacoes').update(payload).eq('id', editId);
+    if (error) { alert('Erro ao salvar: ' + error.message); return; }
+    showToast('Automação atualizada!');
+  } else {
+    payload.history = [{ type: 'create', author, note: 'Automação criada', ts: now }];
+    const { data, error } = await db.from('automacoes').insert(payload).select().single();
+    if (error) { alert('Erro ao criar: ' + error.message); return; }
+    selectedId = data.id;
+    showToast('Automação adicionada!');
+  }
+  closeModal();
+}
+
+async function deleteProject(id) {
+  const { error } = await db.from('automacoes').delete().eq('id', id);
+  if (error) { alert('Erro ao excluir: ' + error.message); return; }
+  if (selectedId === id) selectedId = null;
+  closeConfirm();
+  showToast('Automação excluída.');
+}
+
+// ── Diff for history ─────────────────────────────────────────────
+function diffProject(old, novo) {
+  const labels = { name:'Nome', area:'Área', category:'Categoria', responsible:'Responsável',
+    status:'Status', priority:'Prioridade', difficulty:'Dificuldade', progress:'Progresso',
+    tool:'Ferramenta', kpi:'KPI', notes:'Observação', start_date:'Início', end_date:'Prazo' };
+  return Object.keys(labels).reduce((acc, k) => {
+    let ov = String(old[k] ?? ''), nv = String(novo[k] ?? '');
+    if (ov !== nv) {
+      if (k === 'priority')   { ov = PRI_LBL[ov]||ov; nv = PRI_LBL[nv]||nv; }
+      if (k === 'difficulty') { ov = DIF_LBL[ov]||ov; nv = DIF_LBL[nv]||nv; }
+      if (k === 'progress')   { ov += '%'; nv += '%'; }
+      if (k === 'start_date' || k === 'end_date') { ov = fmtDate(ov||null); nv = fmtDate(nv||null); }
+      acc.push(`${labels[k]}: "${ov||'—'}" → "${nv||'—'}"`);
+    }
+    return acc;
+  }, []);
+}
+
+// ── Filtering / sorting ──────────────────────────────────────────
+function getFiltered() {
+  const q       = (document.getElementById('search')||{value:''}).value.toLowerCase();
+  const sortBy  = (document.getElementById('sort-by')||{value:'default'}).value;
+  const catF    = (document.getElementById('filter-cat')||{value:''}).value;
+  const respF   = (document.getElementById('filter-resp')||{value:''}).value;
+  let list = [...projects];
+  if (activeFilter !== 'Todos') list = list.filter(p => p.status === activeFilter);
+  if (catF)  list = list.filter(p => p.category    === catF);
+  if (respF) list = list.filter(p => p.responsible === respF);
+  if (q)     list = list.filter(p =>
+    p.name.toLowerCase().includes(q) ||
+    (p.responsible||'').toLowerCase().includes(q) ||
+    (p.notes||'').toLowerCase().includes(q)
+  );
+  const sorters = {
+    'pri-asc':      (a,b) => (a.priority||9)-(b.priority||9),
+    'deadline-asc': (a,b) => { const da=a.end_date?daysDiff(a.end_date):9999, db=b.end_date?daysDiff(b.end_date):9999; return da-db; },
+    'prog-desc':    (a,b) => b.progress-a.progress,
+    'prog-asc':     (a,b) => a.progress-b.progress,
+    'name-asc':     (a,b) => a.name.localeCompare(b.name),
+  };
+  if (sorters[sortBy]) list.sort(sorters[sortBy]);
+  return list;
+}
+
+// ── Render helpers ───────────────────────────────────────────────
+function populateSelects() {
+  const fc = document.getElementById('filter-cat'),  cv = fc?.value;
+  const fr = document.getElementById('filter-resp'), rv = fr?.value;
+  if (fc) { fc.innerHTML = '<option value="">Todas as categorias</option>' + getUnique('category').map(c=>`<option value="${c}">${c}</option>`).join(''); fc.value = cv; }
+  if (fr) { fr.innerHTML = '<option value="">Todos os responsáveis</option>' + getUnique('responsible').map(r=>`<option value="${r}">${r}</option>`).join(''); fr.value = rv; }
+}
+
+function renderMetrics() {
+  const t = projects.length;
+  const done     = projects.filter(p => p.status === 'Concluído').length;
+  const dev      = projects.filter(p => p.status === 'Em desenvolvimento').length;
+  const hi       = projects.filter(p => p.priority == 1).length;
+  const overdue  = projects.filter(p => p.end_date && p.status !== 'Concluído' && p.status !== 'Cancelado' && daysDiff(p.end_date) < 0).length;
+  const pct      = t ? Math.round(done/t*100) : 0;
+  document.getElementById('metrics').innerHTML = `
+    <div class="metric"><div class="metric-label">Total</div><div class="metric-value">${t}</div><div class="metric-sub">automações</div></div>
+    <div class="metric"><div class="metric-label">Em desenvolvimento</div><div class="metric-value">${dev}</div><div class="metric-sub">em andamento</div></div>
+    <div class="metric"><div class="metric-label">Concluídas</div><div class="metric-value">${done}</div><div class="metric-sub">${pct}% do total</div></div>
+    <div class="metric"><div class="metric-label">Alta prioridade</div><div class="metric-value">${hi}</div><div class="metric-sub">prioridade 1</div></div>
+    <div class="metric"><div class="metric-label">Atrasadas</div><div class="metric-value ${overdue>0?'red':''}">${overdue}</div><div class="metric-sub">prazo vencido</div></div>
+  `;
+  document.getElementById('subtitle').textContent = `${t} projeto${t!==1?'s':''} · CS · dados em tempo real`;
+}
+
+function renderAlerts() {
+  const overdue = projects.filter(p => p.end_date && p.status !== 'Concluído' && p.status !== 'Cancelado' && daysDiff(p.end_date) < 0);
+  const soon    = projects.filter(p => p.end_date && p.status !== 'Concluído' && p.status !== 'Cancelado' && daysDiff(p.end_date) >= 0 && daysDiff(p.end_date) <= 7);
+  let html = '';
+  if (overdue.length) html += `<div class="alert-banner error">⚠ ${overdue.length} automação${overdue.length>1?'ões':''} com prazo vencido: ${overdue.map(p=>p.name).join(', ')}</div>`;
+  if (soon.length)    html += `<div class="alert-banner warn">◷ ${soon.length} automação${soon.length>1?'ões':''} vencem em até 7 dias: ${soon.map(p=>p.name).join(', ')}</div>`;
+  document.getElementById('alert-banners').innerHTML = html;
+}
+
+function renderFilters() {
+  const s = ['Todos','Backlog','Planejamento','Em desenvolvimento','Pausado','Concluído','Cancelado'];
+  document.getElementById('filters').innerHTML = s.map(x =>
+    `<button class="fb ${activeFilter===x?'active':''}" onclick="setFilter('${x}')">${x}</button>`
+  ).join('');
+}
+
+// ── Side panel ───────────────────────────────────────────────────
+function sidePanel() {
+  if (!selectedId) return `<div class="sp-body"><div class="sp-empty">Clique em um projeto para ver os detalhes</div></div>`;
+  const p = projects.find(x => x.id === selectedId);
+  if (!p) return '';
+  const dl = deadlineInfo(p);
+  const detailsHtml = `
+    <div class="sp-body">
+      <div class="sp-title">${p.name}</div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap">
+        <span class="badge ${STATUS_MAP[p.status]||'b-backlog'}">${p.status}</span>
+        ${p.priority ? `<span class="badge ${PRI_MAP[p.priority]}">P${p.priority} ${PRI_LBL[p.priority]}</span>` : ''}
+      </div>
+      ${p.progress > 0 ? `<div class="sp-section"><h3>Progresso</h3><div class="prog-full"><div class="prog-full-bar"><div class="prog-full-inner" style="width:${p.progress}%"></div></div><span style="font-size:12px;font-weight:600">${p.progress}%</span></div></div>` : ''}
+      <div class="sp-section"><h3>Informações</h3>
+        <div class="sp-grid">
+          <div class="sp-field"><div class="sf-label">Área</div><div class="sf-val">${p.area||'—'}</div></div>
+          <div class="sp-field"><div class="sf-label">Categoria</div><div class="sf-val">${p.category||'—'}</div></div>
+          ${p.responsible ? `<div class="sp-field full"><div class="sf-label">Responsável</div><div class="sf-val">${p.responsible}</div></div>` : ''}
+          <div class="sp-field"><div class="sf-label">Início</div><div class="sf-val">${fmtDate(p.start_date)}</div></div>
+          <div class="sp-field"><div class="sf-label">Prazo</div><div class="sf-val ${dl.cls==='dl-over'?'over':dl.cls==='dl-warn'?'warn':''}">${p.end_date ? fmtDate(p.end_date) + (dl.text !== fmtDate(p.end_date) ? ' ('+dl.text+')' : '') : '—'}</div></div>
+          ${p.difficulty ? `<div class="sp-field"><div class="sf-label">Dificuldade</div><div class="sf-val">${DIF_LBL[p.difficulty]||p.difficulty}</div></div>` : ''}
+          ${p.tool ? `<div class="sp-field"><div class="sf-label">Ferramenta</div><div class="sf-val">${p.tool}</div></div>` : ''}
+        </div>
+      </div>
+      ${p.kpi   ? `<div class="sp-section"><h3>KPI monitorado</h3><div class="sp-desc">${p.kpi}</div></div>` : ''}
+      ${p.notes ? `<div class="sp-section"><h3>Observação</h3><div class="sp-desc">${p.notes}</div></div>` : ''}
+    </div>`;
+  const hist = p.history || [];
+  const histHtml = `
+    <div class="sp-body">
+      ${hist.length === 0 ? `<div style="font-size:12px;color:var(--text3);text-align:center;padding:20px 0">Nenhum registro ainda.</div>` : ''}
+      <div class="hist-list">
+        ${[...hist].reverse().map(h => `
+          <div class="hist-item">
+            <div class="hist-dot ${h.type||'edit'}"></div>
+            <div class="hist-body">
+              <div class="hist-action">${h.note}</div>
+              <div class="hist-meta">${h.author||'Sistema'} · ${fmtTs(h.ts)}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>`;
+  return `
+    <div class="sp-head">
+      <h2>Detalhes</h2>
+      <div class="sp-btns">
+        <button class="btn btn-sm btn-secondary" onclick="openModal(${p.id})">Editar</button>
+        <button class="btn btn-danger" onclick="confirmDelete(${p.id})">✕</button>
+      </div>
+    </div>
+    <div class="sp-tabs">
+      <button class="sp-tab ${activeTab==='detalhes'?'active':''}" onclick="setTab('detalhes')">Detalhes</button>
+      <button class="sp-tab ${activeTab==='historico'?'active':''}" onclick="setTab('historico')">Histórico${hist.length ? ` (${hist.length})` : ''}</button>
+    </div>
+    ${activeTab === 'detalhes' ? detailsHtml : histHtml}
+  `;
+}
+
+// ── Views ────────────────────────────────────────────────────────
+function renderAll() {
+  renderMetrics(); renderAlerts(); renderFilters(); populateSelects(); render();
+}
+
+function render() {
+  populateSelects();
+  if (currentView === 'lista') renderList();
+  else renderKanban();
+}
+
+function renderList() {
+  const list = getFiltered();
+  document.getElementById('content-area').innerHTML = `
+    <div class="list-view">
+      <div class="list-header">
+        <span class="lh">Automação</span>
+        <span class="lh">Status</span>
+        <span class="lh">Responsável</span>
+        <span class="lh">Progresso</span>
+        <span class="lh">Prioridade</span>
+        <span class="lh">Prazo</span>
+      </div>
+      <div class="list-items">
+        ${list.map(p => {
+          const dl = deadlineInfo(p);
+          return `<div class="list-item ${selectedId===p.id?'active':''}" onclick="selectProject(${p.id})">
+            <div><div class="li-name">${p.name}</div><div class="li-sub">${p.category||''}${p.tool?' · '+p.tool:''}</div></div>
+            <span class="badge ${STATUS_MAP[p.status]||'b-backlog'}">${p.status}</span>
+            <span style="font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.responsible||'—'}</span>
+            <div class="pbar-wrap"><div class="pbar" style="width:${p.progress}%"></div></div>
+            ${p.priority ? `<span class="badge ${PRI_MAP[p.priority]}">P${p.priority}</span>` : `<span style="font-size:11px;color:var(--text3)">—</span>`}
+            <span class="${dl.cls}">${dl.text}</span>
+          </div>`;
+        }).join('') || `<div class="empty-row">Nenhuma automação encontrada</div>`}
+      </div>
+    </div>
+    <div class="side-panel">${sidePanel()}</div>
+  `;
+}
+
+function renderKanban() {
+  const list = getFiltered();
+  const colsHtml = KB_COLS.map(status => {
+    const cards = list.filter(p => p.status === status);
+    return `<div class="kb-col">
+      <div class="kb-col-head"><span class="kb-col-title">${status}</span><span class="kb-count">${cards.length}</span></div>
+      <div class="kb-cards">
+        ${cards.map(p => {
+          const dl = deadlineInfo(p);
+          const cls = dl.cls==='dl-over'?'overdue':dl.cls==='dl-warn'?'due-soon':'';
+          return `<div class="kb-card ${selectedId===p.id?'active':''} ${cls}" onclick="selectProject(${p.id})">
+            <div class="kb-card-name">${p.name}</div>
+            <div class="kb-meta">
+              <span class="kb-area">${p.category||''}</span>
+              ${p.priority ? `<span class="badge ${PRI_MAP[p.priority]}" style="font-size:9px;padding:1px 6px">P${p.priority}</span>` : ''}
+            </div>
+            ${p.responsible ? `<div style="font-size:10px;color:var(--text2);margin-top:4px">${p.responsible}</div>` : ''}
+            ${dl.cls !== 'dl-none' ? `<div style="margin-top:4px"><span class="${dl.cls}">${dl.text}</span></div>` : ''}
+            ${p.progress > 0 ? `<div style="margin-top:6px"><div class="pbar-wrap" style="width:100%"><div class="pbar" style="width:${p.progress}%"></div></div></div>` : ''}
+          </div>`;
+        }).join('') || `<div style="font-size:11px;color:var(--text3);padding:8px;text-align:center">Vazio</div>`}
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('content-area').innerHTML = `
+    <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+      <div class="kanban-view">${colsHtml}</div>
+    </div>
+    <div class="side-panel">${sidePanel()}</div>
+  `;
+}
+
+// ── Controls ─────────────────────────────────────────────────────
+function setView(v) {
+  currentView = v;
+  document.getElementById('btn-lista').className  = 'vt-btn' + (v==='lista'  ? ' active' : '');
+  document.getElementById('btn-kanban').className = 'vt-btn' + (v==='kanban' ? ' active' : '');
+  render();
+}
+function setFilter(f) { activeFilter = f; renderFilters(); render(); }
+function setTab(t) { activeTab = t; render(); }
+function selectProject(id) { selectedId = id; activeTab = 'detalhes'; render(); }
+
+// ── Modal ────────────────────────────────────────────────────────
+function openModal(id) {
+  editId = id || null;
+  document.getElementById('modal-title').textContent = id ? 'Editar automação' : 'Nova automação';
+  if (id) {
+    const p = projects.find(x => x.id === id);
+    document.getElementById('f-name').value  = p.name;
+    document.getElementById('f-area').value  = p.area || '';
+    document.getElementById('f-cat').value   = p.category || '';
+    document.getElementById('f-resp').value  = p.responsible || '';
+    document.getElementById('f-status').value= p.status;
+    document.getElementById('f-pri').value   = p.priority || 3;
+    document.getElementById('f-dif').value   = p.difficulty || 3;
+    document.getElementById('f-prog').value  = p.progress || 0;
+    document.getElementById('f-tool').value  = p.tool || '';
+    document.getElementById('f-kpi').value   = p.kpi || '';
+    document.getElementById('f-obs').value   = p.notes || '';
+    document.getElementById('f-start').value = p.start_date || '';
+    document.getElementById('f-end').value   = p.end_date || '';
+  } else {
+    ['f-name','f-area','f-cat','f-resp','f-tool','f-kpi','f-obs'].forEach(x => document.getElementById(x).value = '');
+    document.getElementById('f-status').value = 'Backlog';
+    document.getElementById('f-pri').value    = '3';
+    document.getElementById('f-dif').value    = '3';
+    document.getElementById('f-prog').value   = '0';
+    document.getElementById('f-start').value  = '';
+    document.getElementById('f-end').value    = '';
+  }
+  document.getElementById('f-author').value = '';
+  document.getElementById('modal').style.display = 'flex';
+}
+function closeModal() { document.getElementById('modal').style.display = 'none'; }
+
+// ── Delete confirm ───────────────────────────────────────────────
+function confirmDelete(id) {
+  deleteTargetId = id;
+  const p = projects.find(x => x.id === id);
+  document.getElementById('confirm-msg').textContent = `Deseja excluir "${p.name}"? Esta ação não pode ser desfeita.`;
+  document.getElementById('confirm-overlay').style.display = 'flex';
+  document.getElementById('confirm-ok').onclick = () => deleteProject(deleteTargetId);
+}
+function closeConfirm() { document.getElementById('confirm-overlay').style.display = 'none'; }
+
+// ── Export CSV ───────────────────────────────────────────────────
+function exportCSV() {
+  const list = getFiltered();
+  const headers = ['ID','Nome','Área','Categoria','Responsável','Status','Prioridade','Dificuldade','Progresso (%)','Ferramenta','KPI','Início','Prazo','Observação'];
+  const rows = list.map(p => [
+    p.id, p.name, p.area, p.category, p.responsible||'', p.status,
+    PRI_LBL[p.priority]||'', DIF_LBL[p.difficulty]||'', p.progress,
+    p.tool, p.kpi, fmtDate(p.start_date), fmtDate(p.end_date), p.notes
+  ].map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(','));
+  const csv  = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url  = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'automacoes_cs.csv'; a.click();
+  URL.revokeObjectURL(url);
+  showToast('CSV exportado!');
+}
+
+// ── Boot ─────────────────────────────────────────────────────────
+loadProjects();
+</script>
+</body>
+</html>
